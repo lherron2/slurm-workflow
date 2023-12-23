@@ -1,121 +1,82 @@
-# Comprehensive Guide to Distributed Computing with Python and SLURM in Scientific Environments
+# Comprehensive Guide to Distributed Computing Framework
 
-This guide introduces an advanced framework for managing distributed computing tasks within a scientific context using Python and SLURM. It encompasses four key components: the Driver, SLURM Constructor, Container, and Serializer, each playing a vital role in the ecosystem.
+Welcome to our distributed computing framework, designed for efficient task management, serialization, and execution in high-performance computing clusters using Python and SLURM. This guide encompasses the `Process`, `ObjectSerializer`, `JobContainer`, and `SLURMDriver` classes.
 
-## The Driver: Task Management and Scheduling
+## Process: User-Defined Task Logic
 
-The Driver is the central component that manages the distribution and execution of tasks across the computing cluster. It interfaces with SLURM to submit jobs, handles scheduling logic, and responds to job completions and failures.
+The `Process` class, defined by the user, encapsulates the specific logic of the computational task.
 
-### Python Example: Driver Implementation
-
-```python
-import subprocess
-
-class SLURMDriver:
-    def submit_job(self, script_path):
-        result = subprocess.run(['sbatch', script_path], capture_output=True)
-        return result.stdout.strip()
-
-    def check_job_status(self, job_id):
-        result = subprocess.run(['squeue', '-j', job_id], capture_output=True)
-        return result.stdout.strip()
-
-# Usage
-driver = SLURMDriver()
-job_id = driver.submit_job('/path/to/job_script.sh')
-status = driver.check_job_status(job_id)
-print(f"Job Status: {status}")
-```
-
-## The SLURM Constructor: Environment Setup and Process Serialization
-
-The SLURM Constructor is responsible for preparing the SLURM script and serializing the Process object. The Process object contains a `run` method which encapsulates the computational task.
-
-### Python Example: SLURM Constructor and Process Serialization
+### Example Usage
 
 ```python
-import pickle
-
-class Process:
+class MyProcess:
     def run(self):
-        # Computational task
-        pass
+        # Task-specific logic
+        print("Process running")
 
-class SLURMConstructor:
-    def create_slurm_script(self, job_script, cpus=1, memory='1gb', time='01:00:00'):
-        slurm_header = f"""#!/bin/bash
-#SBATCH --cpus-per-task={cpus}
-#SBATCH --mem={memory}
-#SBATCH --time={time}
-"""
-        return slurm_header + job_script
-
-    def serialize_process(self, process, file_path):
-        with open(file_path, 'wb') as file:
-            pickle.dump(process, file)
-
-# Usage
-process = Process()
-constructor = SLURMConstructor()
-slurm_script = constructor.create_slurm_script('python my_script.py')
-with open('my_slurm_job.sh', 'w') as file:
-    file.write(slurm_script)
-
-constructor.serialize_process(process, '/path/to/process.pkl')
+# Create and use an instance of MyProcess
+process = MyProcess()
+process.run()
 ```
 
-## The Container: Executing Isolated Tasks
+## ObjectSerializer: Advanced Data Serialization
 
-Containers are responsible for executing the tasks in isolated environments. They interact with serialized Process objects and handle the execution of the `run` method.
+Responsible for serialization and deserialization of objects, tailored for high-performance computing environments.
 
-### Python Example: Container Implementation
+### Key Features
+
+- **Efficient Data Handling**: Uses HDF5 for storage and Blosc for compression.
+
+### Example Usage
 
 ```python
-class JobContainer:
-    def __init__(self, process_file_path):
-        self.process_file_path = process_file_path
+serializer = ObjectSerializer('path/to/serialized_object.h5')
+my_process = MyProcess(data="Sample Data")
+serializer.serialize(my_process, path='/my_process')
 
-    def execute(self):
-        with open(self.process_file_path, 'rb') as file:
-            process = pickle.load(file)
-            process.run()
+# Load the object later
+loaded_process = serializer.load('/my_process')
+loaded_process.run()
+```
 
-# Usage
-container = JobContainer('/path/to/process.pkl')
+## JobContainer: Enhanced Task Execution and Serialization
+
+Executes tasks in isolated environments and manages serialization with `ObjectSerializer`.
+
+### Key Responsibilities
+
+- **Task Isolation and Execution**: Ensures consistent and reliable task execution.
+- **Serialization Integration**: Utilizes `ObjectSerializer` for handling `Process` objects.
+
+### Example Usage
+
+```python
+# Serialize and execute a Process
+process = MyProcess()
+process_file_path = '/path/to/process.pkl'
+Serializer.serialize_to_file(process, process_file_path)
+
+container = JobContainer(process_file_path)
 container.execute()
 ```
 
-## The Serializer: Data Serialization and Filesystem Interfacing
+## SLURMDriver: Advanced Task Management with SLURM
 
-The Serializer manages the serialization and deserialization of data, crucial for storing and retrieving process states, configurations, or any data that needs to persist across the distributed system.
+Facilitates job submission, monitoring, and management in distributed computing setups.
 
-### Python Example: Serializer Implementation
+### Features and Functionalities
+
+- **Dynamic Job Submission**: Supports customizable SLURM header arguments.
+- **Real-time Job Monitoring**: Offers job status updates.
+
+### Example Usage
 
 ```python
-class Serializer:
-    def serialize_to_file(self, obj, file_path):
-        with open(file_path, 'wb') as file:
-            pickle.dump(obj, file)
-
-    def deserialize_from_file(self, file_path):
-        with open(file_path, 'rb') as file:
-            return pickle.load(file)
-
-# Usage
-serializer = Serializer()
-data = {'example': 'data'}
-serializer.serialize_to_file(data, '/path/to/data.pkl')
-loaded_data = serializer.deserialize_from_file('/path/to/data.pkl')
+driver = SLURMDriver()
+job_id = driver.submit_job('/path/to/container', conda_env='my_env', modules=['module1'], slurm_args={'cpus-per-task': '4', 'mem': '4G', 'time': '01:00:00'})
+all_jobs_status = driver.check_all_job_statuses()
 ```
-
-## Resource Monitoring: A Collaborative Approach
-
-Resource monitoring is vital for efficient cluster management. It should be a shared responsibility:
-
-- **Driver**: Monitors overall resource usage across the cluster.
-- **Containers**: Track their own resource usage and report to the Driver.
-- **External Tools**: Utilize tools compatible with SLURM for detailed resource monitoring.
 
 ## Conclusion
 
-This comprehensive framework, combining the Driver, SLURM Constructor, Container, and Serializer, provides a robust and scalable approach for managing distributed computing tasks in scientific environments using Python and SLURM. It ensures efficient task management, environment setup, and data handling, crucial for advanced scientific computing and research.
+Our framework provides a comprehensive solution for managing, serializing, and executing tasks in scientific environments. Each class – `Process`, `ObjectSerializer`, `JobContainer`, and `SLURMDriver` – plays a pivotal role in optimizing resource utilization and task management in SLURM-based computing clusters.
