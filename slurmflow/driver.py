@@ -1,4 +1,5 @@
 import os
+import time
 import subprocess
 import tempfile
 
@@ -136,7 +137,7 @@ class SlurmDriver:
         result = subprocess.run(cmd, capture_output=True, text=True)
         return result.stdout.splitlines()
 
-    def submit_job(self, cmd: str, env: Optional[str] = None, modules: List[str] = [], slurm_args: Dict[str, str] = {}) -> str:
+    def submit_job(self, cmd: str, env: Optional[str] = None, modules: List[str] = [], slurm_args: Dict[str, str] = {}, track: bool = True) -> str:
         """
         Submits a Slurm job with the given parameters.
 
@@ -164,7 +165,8 @@ class SlurmDriver:
         result = subprocess.run(['sbatch', tmpfile_path], capture_output=True, text=True)
         job_id = result.stdout.strip().split()[-1]
         print(job_id)
-        self.jobs_registry[job_id] = {'status': 'submitted', 'script': tmpfile_path}
+        if track:
+            self.jobs_registry[job_id] = {'status': 'submitted', 'script': tmpfile_path}
         return job_id
 
     def check_job_status(self, job_id: str) -> str:
@@ -264,3 +266,31 @@ class SlurmDriver:
         script_lines.append(f"{cmd}")
         print(script_lines)
         return "\n".join(script_lines)
+    
+    def wait(self, sleep_time: int = 10) -> None:
+        """
+        Waits for all Slurm jobs in the jobs registry to complete.
+
+        This method iterates over all job IDs in the jobs registry and checks 
+        their status by calling the check_job_status method. It waits until all 
+        jobs have 'completed' status.
+
+        Returns:
+            None
+        """
+        # Get a list of all job IDs in the jobs registry
+        job_ids = list(self.jobs_registry.keys())
+        
+        # Start an infinite loop
+        while True:
+            # Iterate over each job ID after a sleep time
+            time.sleep(sleep_time)
+            for job_id in job_ids:
+                # Check the status of the current job
+                status = self.check_job_status(job_id) 
+                # If the job status is not 'completed', break the loop
+                if status != 'completed':
+                    break
+            else:
+                # If all jobs have 'completed' status, break the infinite loop
+                break
