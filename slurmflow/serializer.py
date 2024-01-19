@@ -1,19 +1,16 @@
 import h5py
-import blosc
+import blosc2
 import os
 import dill
 import numpy as np
 from typing import Any
 import importlib
+import sys
 
 import logging
-
-logging.basicConfig(
-    level=logging.DEBUG,  # Set log level to DEBUG
-    format='%(asctime)s - %(levelname)s - %(message)s',  # Define the log format
-    datefmt='%Y-%m-%d %H:%M:%S'  # Define the date format
-)
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler(sys.stdout))
 
 class ObjectSerializer:
     def __init__(self, filename: str):
@@ -30,38 +27,23 @@ class ObjectSerializer:
         """
         with h5py.File(self.filename, 'r') as hdf_file:
             hdf_file.visit(print)
+            
+    def compress_data(self, data: Any, chunksize: int = 10_000_000) -> [bytes]:
+        serialized_data = dill.dumps(data)
+        schunk = blosc2.SChunk(chunksize=chunksize)
+        for i in range(len(serialized_data) // chunksize + 1):
+            schunk.append_data(serialized_data[i*chunksize:(i+1)*chunksize])
+        cframe = schunk.to_cframe()
 
-    def compress_data(self, data: bytes, chunksize: int = 1024*1024) -> bytes:
-        """
-        Compress data in chunks using Blosc.
+        # Chunk the cframe for HDF5 storage
+        cframe_chunks = [cframe[i:i + chunksize] for i in range(0, len(cframe), chunksize)]
+        return cframe_chunks
 
-        This method compresses the input data using Blosc and returns the compressed data.
-
-        Parameters:
-        data (bytes): The data to compress.
-        chunksize (int, optional): The chunk size to use for compression. Defaults to 1024*1024.
-
-        Returns:
-        bytes: The compressed data.
-        """
-        compressed_data = blosc.compress(data)
-        return bytes(compressed_data)
-
-    def decompress_data(self, data: bytes, chunksize: int = 1024*1024) -> bytes:
-        """
-        Decompress data in chunks using Blosc.
-
-        This method decompresses the input data using Blosc and returns the decompressed data.
-
-        Parameters:
-        data (bytes): The data to decompress.
-        chunksize (int, optional): The chunk size to use for decompression. Defaults to 1024*1024.
-
-        Returns:
-        bytes: The decompressed data.
-        """
-        decompressed_data = blosc.decompress(data)
-        return bytes(decompressed_data)
+    def decompress_data(self, concatenated_cframe: [bytes]) -> Any:
+        reconstructed_schunk = blosc2.schunk_from_cframe(concatenated_cframe)
+        decompressed_data = b''.join(reconstructed_schunk.decompress_chunk(i) 
+                                     for i in range(reconstructed_schunk.nchunks))
+        return dill.loads(decompressed_data)
 
     def ensure_path_exists(self, hdf_file: h5py.File, path: str) -> None:
         """
@@ -132,18 +114,15 @@ class ObjectSerializer:
                 self._recursive_store(hdf_file, attr_value, attr_path)
         else:
             logger.debug(f"Object does not have a __dict__. Serializing and storing directly at path: {current_path}")
-            serialized_data = dill.dumps(obj)
-            try:
-                compressed_data = blosc.compress(serialized_data)
-                data_to_store = np.void(compressed_data)
-            except TypeError:
-                data_to_store = np.void(serialized_data)
+            serialized_data = dill.dumps(obj)            
+            cframe_chunks = self.compress_data(serialized_data)
 
             if current_path in hdf_file and current_path != '/':
                 logger.debug(f"Deleting existing object at path: {current_path} to create a new dataset")
                 del hdf_file[current_path]
-
-            hdf_file.create_dataset(current_path, data=data_to_store)
+                
+            for i, chunk in enumerate(cframe_chunks):
+                hdf_file.create_dataset(f"{current_path}/chunk_{i}", data=np.void(chunk))
 
     def load(self, path: str = '/') -> Any:
         """
@@ -156,35 +135,11 @@ class ObjectSerializer:
             return self._recursive_load(hdf_file, path)
     
     def _recursive_load(self, hdf_file: h5py.File, current_path: str) -> Any:
-        """
-        Recursively load an object from the HDF5 file.
-
-        This private method is called by the public load method. It handles the 
-        deserialization and reconstruction of objects stored in the HDF5 file, 
-        including nested objects.
-
-        Parameters:
-        hdf_file (h5py.File): The HDF5 file to read from.
-        current_path (str): The current path in the HDF5 file from which to load the object.
-
-        Returns:
-        Any: The reconstructed object.
-        """
         if current_path not in hdf_file:
             raise ValueError(f"Path {current_path} does not exist in the HDF5 file.")
 
-        # Check if the current path is a dataset or a group (object with __dict__)
-        if isinstance(hdf_file[current_path], h5py.Dataset):
-            # It's a dataset, so load and deserialize the data
-            serialized_data = hdf_file[current_path][()]
-            try:
-                # Attempt to decompress, assuming data is blosc compressed
-                decompressed_data = blosc.decompress(serialized_data)
-            except TypeError:
-                # If decompression fails, assume data was stored as is
-                decompressed_data = serialized_data
-            return dill.loads(decompressed_data)
-        else:
+        # Check if the current path is a dataset or a group
+        if isinstance(hdf_file[current_path], h5py.Group) and 'type' in hdf_file[current_path].attrs:
             # It's a group, so treat it as an object with __dict__
             class_name = hdf_file[current_path].attrs['type']
             module_name, class_name = class_name.rsplit('.', 1)
@@ -193,8 +148,24 @@ class ObjectSerializer:
             obj = obj_type.__new__(obj_type)
 
             for attr_name in hdf_file[current_path].keys():
-                attr_path = f'{current_path}/{attr_name}'.lstrip('/')
-                nested_obj = self._recursive_load(hdf_file, attr_path)
-                setattr(obj, attr_name, nested_obj)
+                # Exclude special attributes like '__dict__'
+                if not attr_name.startswith('__'):
+                    attr_path = f'{current_path}/{attr_name}'.lstrip('/')
+                    nested_obj = self._recursive_load(hdf_file, attr_path)
+                    setattr(obj, attr_name, nested_obj)
 
             return obj
+        else:
+            # It's a dataset, so load and deserialize the data
+            serialized_data = []
+            i = 0
+            while f'{current_path}/chunk_{i}' in hdf_file:
+                chunk = hdf_file[f'{current_path}/chunk_{i}'][()].tobytes()
+                serialized_data.append(chunk)
+                i += 1
+            concatenated_data = b''.join(serialized_data)
+            try:
+                decompressed_data = self.decompress_data(concatenated_data)
+            except TypeError:
+                decompressed_data = concatenated_data
+            return dill.loads(decompressed_data)
