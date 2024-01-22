@@ -13,8 +13,8 @@ logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.StreamHandler(sys.stdout))
 
 class ObjectSerializer:
-    def __init__(self, filename: str):
-        self.filename = filename
+    def __init__(self, **kwargs):
+        pass
 
     def print_summary(self) -> None:
         """
@@ -25,7 +25,7 @@ class ObjectSerializer:
         Returns:
         None
         """
-        with h5py.File(self.filename, 'r') as hdf_file:
+        with h5py.File(filename, 'r') as hdf_file:
             hdf_file.visit(print)
             
     def compress_data(self, data: Any, chunksize: int = 10_000_000) -> [bytes]:
@@ -66,7 +66,7 @@ class ObjectSerializer:
                 if current_path not in hdf_file:
                     hdf_file.create_group(current_path)
                     
-    def serialize(self, obj: Any, path: str = '/', overwrite: bool = False) -> None:
+    def save(self, obj: Any, filename: str, internal_path: str = '/', overwrite: bool = False) -> None:
         """
         Recursively store an object and its nested objects in the HDF5 file.
 
@@ -75,13 +75,13 @@ class ObjectSerializer:
         nested objects and stores their paths and types for reconstruction.
         """
 
-        if overwrite and os.path.exists(self.filename):
-            os.remove(self.filename)
+        if overwrite and os.path.exists(filename):
+            os.remove(filename)
 
-        os.makedirs(os.path.dirname(self.filename), exist_ok=True)
-        with h5py.File(self.filename, 'a') as hdf_file:
-            self.ensure_path_exists(hdf_file, path)
-            self._recursive_store(hdf_file, obj, path)
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        with h5py.File(filename, 'a') as hdf_file:
+            self.ensure_path_exists(hdf_file, internal_path)
+            self._recursive_store(hdf_file, obj, internal_path)
 
     def _recursive_store(self, hdf_file: h5py.File, obj: Any, current_path: str) -> None:
         """
@@ -99,7 +99,7 @@ class ObjectSerializer:
             None
         """
         logger.debug(f"Storing object at path: {current_path}")
-        if hasattr(obj, '__dict__'):
+        if hasattr(obj, '__dict__') and  bool(obj.__dict__):
             class_name = type(obj).__module__ + '.' + type(obj).__name__
             if current_path not in hdf_file:
                 logger.debug(f"Creating new group at path: {current_path}")
@@ -124,15 +124,15 @@ class ObjectSerializer:
             for i, chunk in enumerate(cframe_chunks):
                 hdf_file.create_dataset(f"{current_path}/chunk_{i}", data=np.void(chunk))
 
-    def load(self, path: str = '/') -> Any:
+    def load(self, filename: str, internal_path: str = '/') -> Any:
         """
         Recursively load an object and its nested objects from the HDF5 file.
 
         This method loads an object from the specified path, reconstructing
         it and its nested objects by deserializing and decompressing the stored data.
         """
-        with h5py.File(self.filename, 'r') as hdf_file:
-            return self._recursive_load(hdf_file, path)
+        with h5py.File(filename, 'r') as hdf_file:
+            return self._recursive_load(hdf_file, internal_path)
     
     def _recursive_load(self, hdf_file: h5py.File, current_path: str) -> Any:
         if current_path not in hdf_file:
