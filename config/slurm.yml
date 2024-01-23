@@ -1,0 +1,5 @@
+---
+partition: "standard"
+time: "01:00:00"
+nodes: 1
+output_dir: './logs'

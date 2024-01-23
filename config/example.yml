@@ -1,0 +1,10 @@
+---
+params:
+    batch_size: 8
+    learning_rate: 0.001
+    dim: 64
+    
+paths:
+    mnt: "/path/to/mount/dir"
+    data: "{{paths.mnt}}/data"
+    models: "{{paths.data}}/bs={{params.batch_size}}_lr={{params.learning_rate}}_dim={{params.dim}}"
