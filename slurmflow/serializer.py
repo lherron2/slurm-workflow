@@ -9,14 +9,14 @@ import sys
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 logger.addHandler(logging.StreamHandler(sys.stdout))
 
 class ObjectSerializer:
     def __init__(self, **kwargs):
         pass
 
-    def print_summary(self) -> None:
+    def print_summary(self, filename, chunks=False) -> None:
         """
         Print a summary of the contents of the HDF5 file.
 
@@ -25,8 +25,15 @@ class ObjectSerializer:
         Returns:
         None
         """
+        def print_no_chunks(name):
+            if 'chunk_' not in name:
+                print(name)
+
         with h5py.File(filename, 'r') as hdf_file:
-            hdf_file.visit(print)
+            if chunks:
+                hdf_file.visit(print)
+            else:
+                hdf_file.visit(print_no_chunks)
             
     def compress_data(self, data: Any, chunksize: int = 10_000_000) -> [bytes]:
         serialized_data = dill.dumps(data)
@@ -66,7 +73,7 @@ class ObjectSerializer:
                 if current_path not in hdf_file:
                     hdf_file.create_group(current_path)
                     
-    def save(self, obj: Any, filename: str, internal_path: str = '/', overwrite: bool = False) -> None:
+    def save(self, obj: Any, filename: str, internal_path: str = '/', overwrite: bool = True) -> None:
         """
         Recursively store an object and its nested objects in the HDF5 file.
 
