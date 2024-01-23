@@ -5,6 +5,12 @@ import tempfile
 
 from typing import List, Dict, Optional
 
+import logging
+import sys
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+logger.addHandler(logging.StreamHandler(sys.stdout))
+
 class SlurmDriver:
     """
     A driver class for managing Slurm jobs.
@@ -154,7 +160,7 @@ class SlurmDriver:
             str: The ID of the submitted job.
         """
         slurm_args, output_path, error_path = self.generate_slurm_args(**slurm_args)
-        print(slurm_args)
+        logger.debug(slurm_args)
         self.create_output_directory(os.path.dirname(output_path))
         self.create_output_directory(os.path.dirname(error_path))
         script_content = self._create_script(cmd, env, modules, slurm_args)
@@ -164,7 +170,7 @@ class SlurmDriver:
 
         result = subprocess.run(['sbatch', tmpfile_path], capture_output=True, text=True)
         job_id = result.stdout.strip().split()[-1]
-        print(job_id)
+        logger.debug(job_id)
         if track:
             self.jobs_registry[job_id] = {'status': 'submitted', 'script': tmpfile_path}
         return job_id
@@ -238,7 +244,7 @@ class SlurmDriver:
         else:
             return False
 
-    def _create_script(self, cmd: str, env: Optional[str], modules: List[str], slurm_args: List[str]) -> str:
+    def _create_script(self, cmd: str, slurm_args: List[str], env: Optional[str] = "", modules: List[str] = [] ,venv: str ='mamba') -> str:
         """
         Creates a script for a Slurm job with the given parameters.
 
@@ -258,13 +264,21 @@ class SlurmDriver:
         if slurm_args:
             script_lines.append(slurm_args)
         if env:
-            script_lines.append("source $MAMBA_ROOT_PREFIX/etc/profile.d/micromamba.sh")
-            script_lines.append(f"micromamba activate {env}")
+            if venv == 'mamba':
+                script_lines.append("source $MAMBA_ROOT_PREFIX/etc/profile.d/micromamba.sh")
+                script_lines.append(f"micromamba activate {env}")
+            elif venv == 'conda':
+                script_lines.append("""__conda_setup="$('conda' 'shell.bash' 'hook' 2> /dev/null)""")
+                script_lines.append("""eval "$__conda_setup""")
+                script_lines.append("""unset __conda_setup""")
+                script_lines.append(f"conda activate {env}")
+            else:
+                raise ValueError(f"Unknown venv: {venv}")
         if modules:
             for module in modules:
                 script_lines.append(f"module load {module}")
         script_lines.append(f"{cmd}")
-        print(script_lines)
+        logger.debug(script_lines)
         return "\n".join(script_lines)
     
     def wait(self, sleep_time: int = 10) -> None:
