@@ -75,61 +75,6 @@ class ConfigParser:
 
         return data
     
-    def override_args(self, args):
-        """
-        Overrides the config_data with values from args.
-        Args:
-            args (dict): Dictionary of arguments to override.
-        Returns:
-            dict: Updated config_data.
-        """
-        for key, value in args.items():
-            if key in self.config_data:
-                # Assuming config_data is a nested dictionary and we need to apply get method of ConfigParser
-                # We'll fetch the section and option from key and update the value accordingly
-                section, option = key.split('.')  # Assuming key is in the format 'section.option'
-                self.config_data[section][option] = self.get(section, option, fallback=value)
-        return self.config_data
-
-    
-    def override_args(self, args_to_override):
-        """
-        Override configuration arguments.
-
-        Args:
-        args_to_override (dict): The arguments to override in the configuration.
-
-        Returns:
-        dict: The configuration data with overridden arguments.
-        """
-        def apply_overrides(item):
-            if isinstance(item, dict):
-                return {k: args_to_override.get(k, v) for k, v in item.items()}
-            return item
-
-        return self.traverse_and_apply(self.config_data, apply_overrides)
-
-
-    # def override_args(self, args, subsection_paths=[]):
-    #     args_dict = vars(args)
-
-    #     if not subsection_paths:
-    #         for arg_key in args_dict:
-    #             config_value = self.get(arg_key)
-    #             if config_value is not None:
-    #                 args_dict[arg_key] = self._substitute_variables_recursive(config_value)
-    #     else:
-    #         for subsection_path in subsection_paths:
-    #             subsection_data = self.get(subsection_path, {})
-    #             if subsection_data:
-    #                 for arg_key in args_dict:
-    #                     config_value = self.get_from_subset(subsection_data, arg_key)
-    #                     if config_value is not None:
-    #                         args_dict[arg_key] = self._substitute_variables_recursive(config_value)
-    #             else:
-    #                 logging.info(f"Subsection '{subsection_path}' not found or is empty.")
-    #     return argparse.Namespace(**args_dict)
-    
     def set(self, key, value):
         keys = key.split('.')
         data = self.config_data
