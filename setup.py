@@ -2,16 +2,19 @@ from setuptools import setup, find_packages
 import os
 
 setup(
-    name="slurm-flow",
-    version="0.1",
+    name="slurm-workflow",
+    version="0.14",
     packages=find_packages(),
-    install_requires=[],
-    tests_require=[
-        'unittest'
-    ],
+    install_requires=[
+        'numpy',
+        'h5py',
+        'blosc2',
+        'dill',
+        'pyyaml',
+        ],
     author="Lukas",
     author_email="lherron@umd.edu",
-    description="A Python module to study molecular dynamics simulations using Thermodynamic Maps",
+    description="A Python module for running workflows on a Slurm cluster.",
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
