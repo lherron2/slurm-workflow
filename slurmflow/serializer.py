@@ -5,12 +5,7 @@ import dill
 import numpy as np
 from typing import Any
 import importlib
-import sys
-
-import logging
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-logger.addHandler(logging.StreamHandler(sys.stdout))
+from . import logger
 
 class ObjectSerializer:
     def __init__(self, **kwargs):

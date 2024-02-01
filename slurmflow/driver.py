@@ -4,12 +4,9 @@ import subprocess
 import tempfile
 
 from typing import List, Dict, Optional
+from . import logger
 
-import logging
-import sys
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-logger.addHandler(logging.StreamHandler(sys.stdout))
+
 
 class SlurmDriver:
     """
@@ -23,12 +20,13 @@ class SlurmDriver:
         jobs_registry (dict): A dictionary to keep track of jobs.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, verbose=False) -> None:
         """
         Initializes the SlurmDriver with the availability of Slurm and an empty jobs registry.
         """
         self.slurm_available: bool = self._is_slurm_available()
         self.jobs_registry: dict = {}
+        self.verbose = verbose
 
     def _is_slurm_available(self) -> bool:
         """
@@ -143,7 +141,7 @@ class SlurmDriver:
         result = subprocess.run(cmd, capture_output=True, text=True)
         return result.stdout.splitlines()
 
-    def submit_job(self, cmd: str, env: Optional[str] = None, modules: List[str] = [], slurm_args: Dict[str, str] = {}, track: bool = True) -> str:
+    def submit_job(self, cmd: str, slurm_args: Dict[str, str] = {}, env: Optional[str] = None, modules: List[str] = [],  track: bool = True, venv='mamba') -> str:
         """
         Submits a Slurm job with the given parameters.
 
@@ -163,7 +161,7 @@ class SlurmDriver:
         logger.debug(slurm_args)
         self.create_output_directory(os.path.dirname(output_path))
         self.create_output_directory(os.path.dirname(error_path))
-        script_content = self._create_script(cmd, env, modules, slurm_args)
+        script_content = self._create_script(cmd, slurm_args, env, modules, venv)
         with tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.sh') as tmpfile:
             tmpfile.write(script_content)
             tmpfile_path = tmpfile.name
@@ -244,7 +242,7 @@ class SlurmDriver:
         else:
             return False
 
-    def _create_script(self, cmd: str, slurm_args: List[str], env: Optional[str] = "", modules: List[str] = [] ,venv: str ='mamba') -> str:
+    def _create_script(self, cmd: str, slurm_args: List[str], env: str, modules: List[str], venv: str) -> str:
         """
         Creates a script for a Slurm job with the given parameters.
 
@@ -278,7 +276,8 @@ class SlurmDriver:
             for module in modules:
                 script_lines.append(f"module load {module}")
         script_lines.append(f"{cmd}")
-        logger.debug(script_lines)
+        if self.verbose:
+            logger.info(script_lines)
         return "\n".join(script_lines)
     
     def wait(self, sleep_time: int = 10) -> None:
