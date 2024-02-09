@@ -3,7 +3,7 @@ import os
 
 setup(
     name="slurm-workflow",
-    version="0.14",
+    version="0.17",
     packages=find_packages(),
     install_requires=[
         'numpy',

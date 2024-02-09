@@ -99,7 +99,7 @@ class ConfigParser:
             data = self._substitute_variables_recursive(data)
         return data
     
-    def compile(self, as_args=False, leaves=False):
+    def compile(self, as_args=False, leaves=False, subsections=[]):
         """
         Compile the entire configuration data by applying the get method to each key.
 
@@ -145,6 +145,9 @@ class ConfigParser:
             return argparse.Namespace(**{k: nested_dict_to_namespace(v) for k, v in d.items()}) 
 
         compile_recursive(self.config_data) # accesses compiled_data
+
+        if subsections:
+            compiled_data = {k: v for k, v in compiled_data.items() if any(subsection in k for subsection in subsections)}
 
         if leaves:
             compiled_data = {k.split('.')[-1]: v for k, v in compiled_data.items()}
