@@ -6,8 +6,6 @@ import tempfile
 from typing import List, Dict, Optional
 from . import logger
 
-
-
 class SlurmDriver:
     """
     A driver class for managing Slurm jobs.
@@ -158,17 +156,25 @@ class SlurmDriver:
             str: The ID of the submitted job.
         """
         slurm_args, output_path, error_path = self.generate_slurm_args(**slurm_args)
-        logger.debug(slurm_args)
+        logger.info(slurm_args)
         self.create_output_directory(os.path.dirname(output_path))
         self.create_output_directory(os.path.dirname(error_path))
         script_content = self._create_script(cmd, slurm_args, env, modules, venv)
+        logger.info(f"Script content: {script_content}")
         with tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.sh') as tmpfile:
             tmpfile.write(script_content)
             tmpfile_path = tmpfile.name
+            logger.info(f"Script path: {tmpfile_path}")
 
         result = subprocess.run(['sbatch', tmpfile_path], capture_output=True, text=True)
-        job_id = result.stdout.strip().split()[-1]
-        logger.debug(job_id)
+        try:
+            job_id = result.stdout.strip().split()[-1]
+            logger.info(f"Job ID: {job_id}")
+        except IndexError:
+            logger.error("Failed to extract job ID from sbatch output.")
+            logger.error(f"STDOUT: {result.stdout}")
+            logger.error(f"STDERR: {result.stderr}")
+            return
         if track:
             self.jobs_registry[job_id] = {'status': 'submitted', 'script': tmpfile_path}
         return job_id
@@ -188,7 +194,8 @@ class SlurmDriver:
             str: The status of the job.
         """
         if job_id in self.jobs_registry:
-            result = subprocess.run(['squeue', '-j', job_id], capture_output=True, text=True)
+            command = f"squeue -j {job_id} | tail -n +2 | awk '{{print $5}}'"
+            result = subprocess.run(command, capture_output=True, text=True, shell=True)
             if 'PD' in result.stdout:  # Pending
                 self.jobs_registry[job_id]['status'] = 'pending'
             elif 'R' in result.stdout:  # Running
@@ -293,17 +300,19 @@ class SlurmDriver:
         """
         # Get a list of all job IDs in the jobs registry
         job_ids = list(self.jobs_registry.keys())
-        
+        logger.info(f"The stored job_ids are {job_ids}")
+        jobs_complete = [False for _ in job_ids]
         # Start an infinite loop
-        while True:
+        jobs_remaining = True
+        while not all(jobs_complete):
             # Iterate over each job ID after a sleep time
             time.sleep(sleep_time)
-            for job_id in job_ids:
+            for i, job_id in enumerate(job_ids):
                 # Check the status of the current job
                 status = self.check_job_status(job_id) 
-                # If the job status is not 'completed', break the loop
-                if status != 'completed':
-                    break
-            else:
-                # If all jobs have 'completed' status, break the infinite loop
-                break
+                logger.info(f"The status of job {job_id} is {status}")
+
+                if status == 'completed':
+                    jobs_complete[i] = True
+                else:
+                    jobs_complete[i] = False

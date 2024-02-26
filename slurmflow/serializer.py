@@ -2,16 +2,21 @@ import h5py
 import blosc2
 import os
 import dill
+import tempfile
+import subprocess
+from subprocess import CalledProcessError
 import numpy as np
 from typing import Any
 import importlib
 from . import logger
 
+
+
 class ObjectSerializer:
     def __init__(self, **kwargs):
         pass
 
-    def print_summary(self, filename, chunks=False) -> None:
+    def print_summary(self, filename, chunks=False, depth=None) -> None:
         """
         Print a summary of the contents of the HDF5 file.
 
@@ -20,15 +25,36 @@ class ObjectSerializer:
         Returns:
         None
         """
-        def print_no_chunks(name):
-            if 'chunk_' not in name:
+        def print_filtered(name):
+            if depth is not None:
+                # Count the depth based on the number of slashes in the name
+                current_depth = name.count('/')
+                if current_depth > depth:
+                    return  # Skip printing if current depth exceeds the specified depth
+
+            if chunks or 'chunk_' not in name:
                 print(name)
 
         with h5py.File(filename, 'r') as hdf_file:
-            if chunks:
-                hdf_file.visit(print)
-            else:
-                hdf_file.visit(print_no_chunks)
+            hdf_file.visit(print_filtered)
+
+    def get_summary(self, filename, chunks=False, depth=None):
+        collected_names = []  # Initialize an empty list to collect names
+        def collect_filtered(name):
+            if depth is not None:
+                # Count the depth based on the number of slashes in the name
+                current_depth = name.count('/')
+                if current_depth > depth:
+                    return  # Skip adding the name if current depth exceeds the specified depth
+
+            if chunks or 'chunk_' not in name:
+                collected_names.append(name)  # Add the name to the list
+
+        with h5py.File(filename, 'r') as hdf_file:
+            hdf_file.visit(collect_filtered)
+
+        return collected_names
+
             
     def compress_data(self, data: Any, chunksize: int = 10_000_000) -> [bytes]:
         serialized_data = dill.dumps(data)
@@ -171,3 +197,37 @@ class ObjectSerializer:
             except TypeError:
                 decompressed_data = concatenated_data
             return dill.loads(decompressed_data)
+
+    def repack(self, filename: str) -> None:
+        """
+        Repacks an HDF5 file in-place by using a temporary file and then replacing the original file.
+
+        Args:
+            filename (str): The path to the HDF5 file to be repacked.
+
+        Raises:
+            FileNotFoundError: If the specified file does not exist.
+            CalledProcessError: If h5repack encounters an error during execution.
+        """
+        if not os.path.exists(filename):
+            raise FileNotFoundError(f"The file {filename} does not exist.")
+        
+        # Create a temporary file
+        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+            temp_filename = tmp_file.name
+
+        try:
+            # Repack to the temporary file
+            subprocess.run(['h5repack', filename, temp_filename], check=True)
+            
+            # Replace the original file with the repacked file
+            os.replace(temp_filename, filename)
+            logger.info(f"Successfully repacked {filename} in place.")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error during repacking: {e}")
+            os.remove(temp_filename)  # Clean up temporary file on failure
+            raise
+        except Exception as e:
+            os.remove(temp_filename)  # Ensure the temporary file is removed if any other error occurs
+            raise
+

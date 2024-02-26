@@ -3,6 +3,7 @@ import yaml
 import logging
 import argparse
 import sys
+import os
 
 from . import logger
 
@@ -21,6 +22,31 @@ class ConfigParser:
     def _load_config_from_file(self, config_file):
         with open(config_file, 'r') as file:
             self.config_data = yaml.safe_load(file)
+
+    def save(self, config_file):
+        """Saves the current configuration data to a file in YAML format.
+        If the file exists, makes a copy of it with a '.bck' suffix added before overwriting."""
+        if self.config_data is None:
+            logging.error("No configuration data to save.")
+            return
+
+        # Check if the file exists and make a backup if it does
+        if os.path.exists(config_file):
+            backup_file = f"{config_file}.bck"
+            try:
+                # Copy the existing file to the backup file
+                os.replace(config_file, backup_file)
+                logging.info(f"Backup of the existing file created at {backup_file}.")
+            except Exception as e:
+                logging.error(f"Failed to create backup of {config_file}: {e}")
+                return
+
+        try:
+            with open(config_file, 'w') as file:
+                yaml.dump(self.config_data, file)
+            logging.info(f"Configuration saved successfully to {config_file}.")
+        except Exception as e:
+            logging.error(f"Failed to save configuration to {config_file}: {e}")
 
     def _flatten_dict(self, d, parent_key='', sep='.'):
         items = []
