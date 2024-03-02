@@ -56,8 +56,6 @@ class SlurmDriver:
         """
         args = {
             "partition": "standard",
-            "ntasks": 1,
-            "cpus_per_task": 1,
             "mem": "8G",
             "time": "1:00:00",
             "job_name": "python_job",
