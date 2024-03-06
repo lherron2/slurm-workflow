@@ -285,7 +285,7 @@ class SlurmDriver:
             logger.info(script_lines)
         return "\n".join(script_lines)
     
-    def wait(self, sleep_time: int = 10) -> None:
+    def wait(self, sleep_time: int = 120) -> None:
         """
         Waits for all Slurm jobs in the jobs registry to complete.
 
