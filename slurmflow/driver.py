@@ -79,6 +79,9 @@ class SlurmDriver:
         if "gres" in kwargs:
             slurm_args.append(f"#SBATCH --gres={kwargs['gres']}")
 
+        if args['partition'] == 'scavenger':
+            slurm_args.append('#SBATCH --requeue')
+
         slurm_args_str = "\n".join(slurm_args)
 
         return slurm_args_str, output_path, error_path
