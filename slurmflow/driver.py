@@ -47,43 +47,69 @@ class SlurmDriver:
         Generates the Slurm job submission arguments based on the 
         provided keyword arguments. It ensures that the arguments are in the 
         correct format for Slurm.
-
+    
         Args:
             **kwargs: Arbitrary keyword arguments that represent Slurm job parameters.
-
+                      Supported keys include:
+                      - partition (str): The partition to submit the job to.
+                      - mem (str): Memory allocation (e.g., "8G").
+                      - time (str): Time limit (e.g., "1:00:00").
+                      - job_name (str): Name of the job.
+                      - output_dir (str): Directory for output and error files.
+                      - gres (str): Generic resources required.
+                      - requeue (bool): Whether to include the --requeue directive.
+                      - ... (other Slurm parameters)
+    
         Returns:
-            A string containing Slurm job submission arguments.
+            A tuple containing:
+                - A string with Slurm job submission arguments.
+                - The path to the output file.
+                - The path to the error file.
         """
+        # Default Slurm parameters
         args = {
             "partition": "standard",
             "mem": "8G",
             "time": "1:00:00",
             "job_name": "python_job",
+            "requeue": False,  # Default value for requeue
         }
+        
+        # Update defaults with any provided keyword arguments
         args.update(kwargs)
-
-
-        output_path = os.path.join(args.get("output_dir", ""), f'slurm_{args["job_name"]}.out')
-        error_path = os.path.join(args.get("output_dir", ""), f'slurm_{args["job_name"]}.err')
-
+    
+        # Construct output and error file paths
+        output_dir = args.get("output_dir", "")
+        output_path = os.path.join(output_dir, f'slurm_{args["job_name"]}.out')
+        error_path = os.path.join(output_dir, f'slurm_{args["job_name"]}.err')
+    
         slurm_args = []
-        args.pop("output_dir")
+        
+        # Remove 'output_dir' and 'requeue' from args to handle them separately
+        args.pop("output_dir", None)
+        requeue = args.pop("requeue", False)
+    
+        # Iterate over the remaining arguments to construct #SBATCH directives
         for key, value in args.items():
             if key != 'gres':
                 slurm_key = key.replace('_', '-')
                 slurm_args.append(f"#SBATCH --{slurm_key}={value}")
-
+    
+        # Add output and error file directives
         slurm_args.append(f"#SBATCH --output={output_path}")
         slurm_args.append(f"#SBATCH --error={error_path}")
-
+    
+        # Add gres directive if provided
         if "gres" in kwargs:
             slurm_args.append(f"#SBATCH --gres={kwargs['gres']}")
-
-        if args['partition'] == 'scavenger':
-            slurm_args.append('#SBATCH --requeue')
-
+    
+        # Add requeue directive if specified
+        if requeue:
+            slurm_args.append("#SBATCH --requeue")
+    
+        # Combine all directives into a single string
         slurm_args_str = "\n".join(slurm_args)
-
+    
         return slurm_args_str, output_path, error_path
  
     def create_output_directory(self, output_dir: str) -> None:
@@ -224,9 +250,10 @@ class SlurmDriver:
         """
         job_ids = list(self.jobs_registry.keys())  # Create a copy of keys to iterate over
         for job_id in job_ids:
-            status = self.check_job_status(job_id)
-            if clear_completed and status in ['completed']:
-                del self.jobs_registry[job_id]
+            if int(job_id) > 0:
+                status = self.check_job_status(job_id)
+                if clear_completed and status in ['completed']:
+                    del self.jobs_registry[job_id]
         return self.jobs_registry
 
     def cancel_job(self, job_id: str) -> bool:
